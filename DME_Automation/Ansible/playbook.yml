@@ -1,0 +1,75 @@
+---
+- name: Deploy Transportation App on EC2
+  hosts: tag_production
+  become: true
+
+  tasks:
+    - name: Update apt and install Docker + dependencies
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+          - unzip
+          - curl
+        state: present
+        update_cache: yes
+
+    - name: Install AWS CLI using official installer
+      shell: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+        unzip -o /tmp/awscliv2.zip -d /tmp
+        sudo /tmp/aws/install --update
+      args:
+        executable: /bin/bash
+      register: awscli_install
+      changed_when: "'already installed' not in awscli_install.stdout"
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create app directory on EC2
+      file:
+        path: /home/ubuntu/transportation
+        state: directory
+        mode: "0755"
+
+    - name: Copy docker-compose.yml and backend.env files
+      copy:
+        src: files/
+        dest: /home/ubuntu/transportation/
+        mode: "0644"
+
+    - name: Login to AWS ECR
+      shell: |
+           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {{ registry_name }}
+      register: ecr_login
+      changed_when: false
+      args:
+        executable: /bin/bash
+
+    - name: Pull latest images using Docker Compose
+      shell: docker-compose pull
+      args:
+        chdir: /home/ubuntu/transportation
+        executable: /bin/bash
+
+    - name: Run docker-compose up (includes PostgreSQL from Docker Hub)
+      shell: |
+        cd /home/ubuntu/transportation
+        docker-compose up -d
+      args:
+        executable: /bin/bash
+
+    - name: Run Prisma DB Push and Seed inside backend container
+      shell: |
+        docker exec -i transport-backend sh -c "npx prisma db push && npx prisma db seed"
+      args:
+        executable: /bin/bash
+      register: prisma_result
+
+    - name: Show Prisma output
+      debug:
+        msg: "{{ prisma_result.stdout | default('No output from Prisma') }}"

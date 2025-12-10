@@ -1,0 +1,3 @@
+aws_region: us-east-1
+aws_account_id: 343218201811
+registry_name: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
