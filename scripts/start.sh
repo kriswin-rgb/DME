@@ -11,6 +11,11 @@ echo "✅ Database is ready! Running Drizzle migrations..."
 npx drizzle-kit migrate || echo "⚠️ Migration step skipped or failed, continuing..."
 
 echo "🚀 Starting Next.js app..."
+
+# Force binding to all interfaces
+export PORT=3000
+export HOSTNAME=0.0.0.0
+
 if [ -f "server.js" ]; then
   node server.js
 else

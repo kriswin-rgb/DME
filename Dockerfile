@@ -23,14 +23,21 @@ ENV NODE_ENV=production
 # Install netcat for PostgreSQL health checks
 RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
 
-# Copy only what’s needed for runtime
+# Copy only what's needed
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
+
+# Copy standalone output
 COPY --from=builder /app/.next/standalone ./
+
+# Copy static chunks so browser can access
 COPY --from=builder /app/.next/static ./.next/static
+
+# Copy scripts
 COPY --from=builder /app/scripts ./scripts
 
 RUN chmod +x scripts/start.sh
 
 EXPOSE 3000
+
 CMD ["./scripts/start.sh"]

@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   web:
-    build: .
+    image: 528789129096.dkr.ecr.us-east-1.amazonaws.com/web_dme:latest
     container_name: dme-web
     ports:
       - "3000:3000"
