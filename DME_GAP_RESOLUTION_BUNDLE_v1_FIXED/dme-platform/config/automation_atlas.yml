@@ -1,0 +1,15 @@
+jobs:
+  - id: W0
+    name: Outbox Mover
+    type: n8n_workflow
+    schedule: "*/1 * * * *"
+    upstream:
+      - system: web.outbox
+        table: signal_outbox
+    downstream:
+      - system: redis
+        key: signals_candidate
+    owner: operations_team
+    agent: SignalDistributor
+    critical: true
+    degraded_mode: "Manual processing via admin panel"

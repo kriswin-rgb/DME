@@ -1,0 +1,77 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          pip install -U pip
+          pip install -r services/dme_core_v5/requirements.txt
+          if [ -f services/dme_core_v5/requirements-dev.txt ]; then pip install -r services/dme_core_v5/requirements-dev.txt; fi
+      - name: Run pytest with coverage
+        run: |
+          pytest --cov=services/dme_core_v5 --cov-report=term --cov-fail-under=70
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: |
+          cd apps/web
+          npm ci || npm install
+      - name: Run tests
+        run: |
+          cd apps/web
+          npm test -- --coverage
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Lint TypeScript
+        run: |
+          cd apps/web
+          npm ci || npm install
+          npm run lint || echo "lint warnings only"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Lint Python
+        run: |
+          pip install ruff mypy
+          ruff check services/ || true
+          mypy services/ --ignore-missing-imports || true
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      - name: Upload results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'

@@ -1,0 +1,14 @@
+{
+  "name": "dme-orchestrator",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "NODE_ENV=development node src/index.js",
+    "test": "node --test ./tests"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}

@@ -1,0 +1,15 @@
+prompts:
+  - agent_id: strategor_001
+    role: Strategy Creator
+    prompt_file: prompts/strategor_v3.md
+    version: 3
+    last_updated: 2025-10-28
+    change_reason: "Tuned to discourage overtrading, better risk documentation"
+    owner: Head of Research
+  - agent_id: risk_monitor_001
+    role: Risk Monitor
+    prompt_file: prompts/risk_monitor_v2.md
+    version: 2
+    last_updated: 2025-10-15
+    change_reason: "Added VaR thresholds, tightened drawdown limits"
+    owner: CISO

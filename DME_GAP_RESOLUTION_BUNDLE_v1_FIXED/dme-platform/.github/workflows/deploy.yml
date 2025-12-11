@@ -1,0 +1,29 @@
+name: Web App Build (Deploy Hook Trigger)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build_web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: apps/web
+
+      - name: Build web app
+        run: npm run build
+        working-directory: apps/web
+
+      - name: Notify deployment system
+        run: |
+          echo "Build complete. Trigger your deployment hook here."
