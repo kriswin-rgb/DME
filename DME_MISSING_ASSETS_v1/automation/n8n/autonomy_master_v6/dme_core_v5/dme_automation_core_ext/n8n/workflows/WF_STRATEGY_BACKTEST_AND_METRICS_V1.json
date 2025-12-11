@@ -1,0 +1,147 @@
+{
+  "name": "WF_STRATEGY_BACKTEST_AND_METRICS_V1",
+  "nodes": [
+    {
+      "id": "Webhook_StrategyCandidate",
+      "name": "Webhook: Strategy Candidate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "strategy/candidate",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson"
+      }
+    },
+    {
+      "id": "HTTP_Backtest",
+      "name": "HTTP: Backtest Strategy (DME Core)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/backtest/strategy",
+        "sendBody": true,
+        "jsonBody": "={{ {\"strategy_id\": $json.strategy_id, \"version\": $json.version || \"1.0\", \"name\": $json.name, \"asset_universe\": $json.asset_universe, \"timeframes\": $json.timeframes, \"params\": $json.params || {}, \"backtest\": $json.backtest} }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "Set_Decision",
+      "name": "Set: Strategy Decision",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        860,
+        300
+      ],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "strategy_id",
+              "value": "={{ $json[\"strategy_id\"] }}"
+            },
+            {
+              "name": "version",
+              "value": "={{ $json[\"version\"] }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $json[\"name\"] }}"
+            },
+            {
+              "name": "decision",
+              "value": "={{ $json[\"metrics\"][\"sharpe\"] >= 1.5 && $json[\"metrics\"][\"max_drawdown\"] >= -0.20 && $json[\"metrics\"][\"trades\"] >= 100 ? \"APPROVE_LIVE\" : ($json[\"metrics\"][\"sharpe\"] >= 1.0 && $json[\"metrics\"][\"max_drawdown\"] >= -0.25 ? \"APPROVE_PAPER\" : \"REJECT\") }}"
+            }
+          ],
+          "number": [
+            {
+              "name": "sharpe",
+              "value": "={{ $json[\"metrics\"][\"sharpe\"] }}"
+            },
+            {
+              "name": "max_drawdown",
+              "value": "={{ $json[\"metrics\"][\"max_drawdown\"] }}"
+            },
+            {
+              "name": "trades",
+              "value": "={{ $json[\"metrics\"][\"trades\"] }}"
+            },
+            {
+              "name": "cagr",
+              "value": "={{ $json[\"metrics\"][\"cagr\"] }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "HTTP_StoreMetrics",
+      "name": "HTTP: Store Strategy Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/strategies/metrics",
+        "sendBody": true,
+        "jsonBody": "={{ {\"strategy_id\": $json.strategy_id, \"version\": $json.version, \"name\": $json.name, \"phase\": \"Research\", \"status\": $json.decision, \"metrics\": {\"sharpe\": $json.sharpe, \"max_drawdown\": $json.max_drawdown, \"trades\": $json.trades, \"cagr\": $json.cagr}} }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Strategy Candidate": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Backtest Strategy (DME Core)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Backtest Strategy (DME Core)": {
+      "main": [
+        [
+          {
+            "node": "Set: Strategy Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Strategy Decision": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Store Strategy Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "id": "WF_STRATEGY_BACKTEST_AND_METRICS_V1",
+  "versionId": "dme-strategy-backtest-metrics-v1"
+}

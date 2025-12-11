@@ -1,0 +1,349 @@
+{
+  "name": "Incident Review",
+  "nodes": [
+    {
+      "id": "Cron",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": {
+        "x": 250,
+        "y": 300
+      },
+      "parameters": {
+        "triggerTimes": [
+          {
+            "hour": 6,
+            "minute": 30
+          }
+        ]
+      }
+    },
+    {
+      "id": "Set Window",
+      "name": "Set Window",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": {
+        "x": 450,
+        "y": 300
+      },
+      "parameters": {
+        "functionCode": "const now = new Date();\nconst to = now.toISOString();\nconst fromDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);\nconst from = fromDate.toISOString();\nreturn [{ from, to }];"
+      }
+    },
+    {
+      "id": "Fetch Incidents",
+      "name": "Fetch Incidents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 250
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/ops/incidents",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "from",
+              "value": "={{$json[\"from\"]}}"
+            },
+            {
+              "name": "to",
+              "value": "={{$json[\"to\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch Metrics Summary",
+      "name": "Fetch Metrics Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 350
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/ops/metrics-summary",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "from",
+              "value": "={{$json[\"from\"]}}"
+            },
+            {
+              "name": "to",
+              "value": "={{$json[\"to\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Claude Deep Review",
+      "name": "Claude Deep Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 900,
+        "y": 300
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/tools/claude/summarise",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{{ \"text\": `Incidents: ${JSON.stringify($items(\"Fetch Incidents\")[0].json)}\\n\\nMetrics: ${JSON.stringify($items(\"Fetch Metrics Summary\")[0].json)}`, \"instructions\": \"Cluster incidents by service, summarise impact and risk.\" }}}"
+      }
+    },
+    {
+      "id": "Build Decision Payload",
+      "name": "Build Decision Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": {
+        "x": 1150,
+        "y": 300
+      },
+      "parameters": {
+        "functionCode": "const from = $json.from;\nconst to = $json.to;\nconst incidents = $items('Fetch Incidents')[0].json;\nconst metrics_summary = $items('Fetch Metrics Summary')[0].json;\nconst claude_summary = $items('Claude Deep Review')[0]?.json?.summary || null;\n\nreturn [\n  {\n    task: {\n      id: `incident-review-${from}-${to}`,\n      type: 'incident_review',\n      priority: 'high',\n      mode: 'auto',\n      requested_by: 'system',\n    },\n    inputs: {\n      from,\n      to,\n      incidents,\n      metrics_summary,\n      claude_summary,\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "Call Orchestrator",
+      "name": "Call Orchestrator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 1400,
+        "y": 300
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/agent/decision",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{$json}}"
+      }
+    },
+    {
+      "id": "Slack SRE Summary",
+      "name": "Slack SRE Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": {
+        "x": 1650,
+        "y": 250
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "#dme-sre",
+        "text": "={{$json[\"outputs\"][\"slack_summary\"] || $json[\"summary\"]}}"
+      },
+      "credentials": {
+        "slackApi": "DME Slack"
+      }
+    },
+    {
+      "id": "Extract Incident Issues",
+      "name": "Extract Incident Issues",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": {
+        "x": 1650,
+        "y": 350
+      },
+      "parameters": {
+        "functionCode": "const actions = $json.actions || [];\nconst issues = actions\n  .filter(a => a.type === 'open_github_issue')\n  .map(a => ({\n    title: a.title || 'DME SRE Remediation Task',\n    body: a.body || 'No body provided by DME Brain.',\n    labels: a.labels || ['incident', 'sre', 'bot:copilot'],\n  }));\nreturn [{ issues }];"
+      }
+    },
+    {
+      "id": "If Incident Issues",
+      "name": "If Incident Issues",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": {
+        "x": 1900,
+        "y": 350
+      },
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"issues\"].length}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Create Incident GitHub Issues",
+      "name": "Create Incident GitHub Issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 2150,
+        "y": 350
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/github/issues",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{$json}}"
+      }
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Set Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Window": {
+      "main": [
+        [
+          {
+            "node": "Fetch Incidents",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Metrics Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Incidents": {
+      "main": [
+        [
+          {
+            "node": "Claude Deep Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Metrics Summary": {
+      "main": [
+        [
+          {
+            "node": "Claude Deep Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Deep Review": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Decision Payload": {
+      "main": [
+        [
+          {
+            "node": "Call Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Slack SRE Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Incident Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Incident Issues": {
+      "main": [
+        [
+          {
+            "node": "If Incident Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Incident Issues": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Create Incident GitHub Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "version": 2
+}

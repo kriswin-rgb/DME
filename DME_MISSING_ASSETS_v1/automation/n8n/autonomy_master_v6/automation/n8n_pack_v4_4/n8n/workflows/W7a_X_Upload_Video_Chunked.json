@@ -1,0 +1,328 @@
+{
+  "name": "W7a_X_Upload_Video_Chunked",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "social/x/video_chunk",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "Webhook_social/x/video_chunk",
+      "name": "Webhook social/x/video_chunk",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "\nconst b = $json;\nconst title = b.title || 'New video';\nconst summary = b.summary || '';\nconst linkUrl = b.linkUrl || (process.env.CANONICAL_URL_BASE || 'https://example.com');\nconst caption = `${title} \u2014 ${summary}`.slice(0, 240);\nreturn [{ json: { title, summary, caption, linkUrl, videoUrl: b.videoUrl || '' } }];\n"
+      },
+      "id": "Function_Compose",
+      "name": "Compose",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        430,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.videoUrl}}",
+        "options": {
+          "responseFormat": "file"
+        },
+        "method": "GET"
+      },
+      "id": "HTTP_FetchVideo",
+      "name": "FetchVideo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        660,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://upload.twitter.com/1.1/media/upload.json?command=INIT&media_type=video/mp4&media_category=tweet_video&total_bytes={{$binary.data.size}}`}}",
+        "options": {},
+        "method": "POST",
+        "authentication": "oAuth1"
+      },
+      "id": "HTTP_X_INIT",
+      "name": "X_INIT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        880,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "\nconst buf = $prevNode['FetchVideo'].binary.data.data;\nconst total = buf.length;\nconst chunkSize = 4 * 1024 * 1024;\nconst media_id = $prevNode['X_INIT'].json.media_id_string;\nconst items = [];\nlet idx = 0;\nfor (let off=0; off<total; off+=chunkSize){\n  const end = Math.min(off+chunkSize, total);\n  const slice = buf.slice(off, end);\n  items.push({\n    json: { segment_index: idx, total_segments: Math.ceil(total/chunkSize), media_id },\n    binary: { data: { data: slice, mimeType: 'video/mp4', fileName: `chunk_${idx}.mp4` } }\n  });\n  idx++;\n}\nreturn items;\n"
+      },
+      "id": "Function_BuildChunks",
+      "name": "BuildChunks",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://upload.twitter.com/1.1/media/upload.json?command=APPEND&media_id={{$json.media_id}}&segment_index={{$json.segment_index}}`}}",
+        "options": {},
+        "method": "POST",
+        "authentication": "oAuth1",
+        "sendBinaryData": true,
+        "binaryPropertyName": "data"
+      },
+      "id": "HTTP_X_APPEND",
+      "name": "X_APPEND",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1320,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "\nconst last = $json.segment_index === ($json.total_segments - 1);\nreturn [{ json: { last, media_id: $json.media_id } }];\n"
+      },
+      "id": "Function_IsLastChunk",
+      "name": "IsLastChunk",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.last}}"
+            }
+          ]
+        }
+      },
+      "id": "IF_Last",
+      "name": "If_Last",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://upload.twitter.com/1.1/media/upload.json?command=FINALIZE&media_id={{$json.media_id}}`}}",
+        "options": {},
+        "method": "POST",
+        "authentication": "oAuth1"
+      },
+      "id": "HTTP_X_FINALIZE",
+      "name": "X_FINALIZE",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1980,
+        160
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "Wait_X",
+      "name": "Wait5s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://upload.twitter.com/1.1/media/upload.json?command=STATUS&media_id={{$json.media_id}}`}}",
+        "options": {},
+        "method": "GET",
+        "authentication": "oAuth1"
+      },
+      "id": "HTTP_X_STATUS",
+      "name": "X_STATUS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2420,
+        160
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{`https://api.twitter.com/1.1/statuses/update.json`}}",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "method": "POST",
+        "jsonParameters": true,
+        "json": {
+          "status": "={{$prevNode['Compose'].json.caption + '\\n' + $prevNode['Compose'].json.linkUrl}}",
+          "media_ids": "={{$json.media_id}}"
+        },
+        "authentication": "oAuth1"
+      },
+      "id": "HTTP_X_TWEET",
+      "name": "X_TWEET",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2640,
+        160
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook social/x/video_chunk": {
+      "main": [
+        [
+          {
+            "node": "Compose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose": {
+      "main": [
+        [
+          {
+            "node": "FetchVideo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FetchVideo": {
+      "main": [
+        [
+          {
+            "node": "X_INIT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X_INIT": {
+      "main": [
+        [
+          {
+            "node": "BuildChunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BuildChunks": {
+      "main": [
+        [
+          {
+            "node": "X_APPEND",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X_APPEND": {
+      "main": [
+        [
+          {
+            "node": "IsLastChunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IsLastChunk": {
+      "main": [
+        [
+          {
+            "node": "If_Last",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Last": {
+      "main": [
+        [
+          {
+            "node": "X_FINALIZE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X_FINALIZE": {
+      "main": [
+        [
+          {
+            "node": "Wait_X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait_X": {
+      "main": [
+        [
+          {
+            "node": "X_STATUS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X_STATUS": {
+      "main": [
+        [
+          {
+            "node": "X_TWEET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}

@@ -1,0 +1,207 @@
+{
+  "name": "W0_Distribution_Wire_In",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "orchestrate/distribute",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "Webhook_orchestrate/distribute",
+      "name": "Webhook orchestrate/distribute",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "\nconst b = $json;\nconst title = b.title || 'New video';\nconst summary = b.summary || '';\nconst linkUrl = b.linkUrl || (process.env.CANONICAL_URL_BASE || 'https://example.com');\nconst tags = b.tags || process.env.SOCIAL_DEFAULT_TAGS || '';\nreturn [{ json: { title, summary, linkUrl, tags, videoUrl: b.videoUrl || '' } }];\n"
+      },
+      "id": "Function_Compose",
+      "name": "Compose",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        430,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=/social/fanout",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "method": "POST",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "jsonParameters": true,
+        "json": {
+          "videoUrl": "={{$json.videoUrl}}",
+          "title": "={{$json.title}}",
+          "summary": "={{$json.summary}}",
+          "linkUrl": "={{$json.linkUrl}}",
+          "tags": "={{$json.tags}}"
+        }
+      },
+      "id": "HTTP_Call_Fanout",
+      "name": "Call_Fanout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        680,
+        460
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=/social/li/video",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "method": "POST",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "jsonParameters": true,
+        "json": {
+          "videoUrl": "={{$json.videoUrl}}",
+          "title": "={{$json.title}}",
+          "summary": "={{$json.summary}}",
+          "linkUrl": "={{$json.linkUrl}}"
+        }
+      },
+      "id": "HTTP_Call_LinkedIn",
+      "name": "Call_LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        680,
+        540
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=/social/pinterest/video",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "method": "POST",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "jsonParameters": true,
+        "json": {
+          "videoUrl": "={{$json.videoUrl}}",
+          "title": "={{$json.title}}",
+          "summary": "={{$json.summary}}",
+          "linkUrl": "={{$json.linkUrl}}"
+        }
+      },
+      "id": "HTTP_Call_Pinterest",
+      "name": "Call_Pinterest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        680,
+        620
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=/social/x/video_chunk",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "method": "POST",
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "jsonParameters": true,
+        "json": {
+          "videoUrl": "={{$json.videoUrl}}",
+          "title": "={{$json.title}}",
+          "summary": "={{$json.summary}}",
+          "linkUrl": "={{$json.linkUrl}}"
+        }
+      },
+      "id": "HTTP_Call_X_Chunk",
+      "name": "Call_X_Chunk",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        680,
+        700
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook orchestrate/distribute": {
+      "main": [
+        [
+          {
+            "node": "Compose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose": {
+      "main": [
+        [
+          {
+            "node": "Call_Fanout",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call_LinkedIn",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call_Pinterest",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call_X_Chunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}

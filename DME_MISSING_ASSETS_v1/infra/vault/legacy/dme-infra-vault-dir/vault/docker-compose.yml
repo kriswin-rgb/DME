@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  vault:
+    image: hashicorp/vault:1.16
+    container_name: dme-vault
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_ADDR: "https://0.0.0.0:8200"
+      VAULT_API_ADDR: "https://localhost:8200"
+      VAULT_LOG_LEVEL: "info"
+      VAULT_CACERT: "/tls/ca.crt"
+    volumes:
+      - ./vault/config:/vault/config
+      - ./vault/policies:/vault/policies
+      - ./vault/data:/vault/data
+      - ./vault/logs:/vault/logs
+      - ./tls:/tls:ro
+    command: ["server", "-config=/vault/config/vault.hcl"]
+    healthcheck:
+      test: ["CMD", "sh", "-c", "VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/tls/ca.crt vault status > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:16
+    container_name: dme-postgres
+    environment:
+      POSTGRES_PASSWORD: postgrespass
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  vault-agent:
+    image: hashicorp/vault:1.16
+    container_name: dme-vault-agent
+    depends_on:
+      - vault
+    command: ["agent", "-config=/agent/agent.hcl"]
+    volumes:
+      - ./agent:/agent
+      - ./tls:/tls:ro
+      - ./client:/client
+    environment:
+      VAULT_CACERT: "/tls/ca.crt"

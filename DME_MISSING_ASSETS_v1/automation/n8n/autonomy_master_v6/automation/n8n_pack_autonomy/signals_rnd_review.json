@@ -1,0 +1,378 @@
+{
+  "name": "Signals RnD Review",
+  "nodes": [
+    {
+      "id": "Cron",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": {
+        "x": 250,
+        "y": 300
+      },
+      "parameters": {
+        "triggerTimes": [
+          {
+            "hour": 7,
+            "minute": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "Set Date",
+      "name": "Set Date",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": {
+        "x": 450,
+        "y": 300
+      },
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "date",
+              "value": "={{$now.toISODate()}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch RnD Strategies",
+      "name": "Fetch RnD Strategies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 200
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/signals/rnd/strategies",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "date",
+              "value": "={{$json[\"date\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch Shadow Performance",
+      "name": "Fetch Shadow Performance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 300
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/signals/shadow/performance",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "date",
+              "value": "={{$json[\"date\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch Production Performance",
+      "name": "Fetch Production Performance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 400
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/signals/production/performance",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "date",
+              "value": "={{$json[\"date\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch Risk Limits",
+      "name": "Fetch Risk Limits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 500
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/risk/limits",
+        "method": "GET"
+      }
+    },
+    {
+      "id": "Build Decision Payload",
+      "name": "Build Decision Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": {
+        "x": 900,
+        "y": 300
+      },
+      "parameters": {
+        "functionCode": "const date = $json.date;\nreturn [\n  {\n    task: {\n      id: `signals-rnd-review-${date}`,\n      type: 'signals_rnd_review',\n      priority: 'high',\n      mode: 'auto',\n      requested_by: 'system',\n    },\n    inputs: {\n      date,\n      rnd_strategies: $items('Fetch RnD Strategies')[0].json,\n      shadow_performance: $items('Fetch Shadow Performance')[0].json,\n      production_performance: $items('Fetch Production Performance')[0].json,\n      risk_limits: $items('Fetch Risk Limits')[0].json,\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "Call Orchestrator",
+      "name": "Call Orchestrator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 1150,
+        "y": 300
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/agent/decision",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{$json}}"
+      }
+    },
+    {
+      "id": "Slack Summary",
+      "name": "Slack Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": {
+        "x": 1400,
+        "y": 250
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "#dme-ops",
+        "text": "={{$json[\"outputs\"][\"slack_summary\"] || $json[\"summary\"]}}"
+      },
+      "credentials": {
+        "slackApi": "DME Slack"
+      }
+    },
+    {
+      "id": "Extract Issues",
+      "name": "Extract Issues",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": {
+        "x": 1400,
+        "y": 350
+      },
+      "parameters": {
+        "functionCode": "const actions = $json.actions || [];\nconst issues = actions\n  .filter(a => a.type === 'open_github_issue')\n  .map(a => ({\n    title: a.title || 'DME Signals R&D Task',\n    body: a.body || 'No body provided by DME Brain.',\n    labels: a.labels || ['signals', 'rnd', 'bot:copilot'],\n  }));\nreturn [{ issues }];"
+      }
+    },
+    {
+      "id": "If Issues",
+      "name": "If Issues",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": {
+        "x": 1650,
+        "y": 350
+      },
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"issues\"].length}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Create GitHub Issues",
+      "name": "Create GitHub Issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 1900,
+        "y": 350
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/github/issues",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{$json}}"
+      }
+    }
+  ],
+  "connections": {
+    "Set Date": {
+      "main": [
+        [
+          {
+            "node": "Fetch RnD Strategies",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Shadow Performance",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Production Performance",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Risk Limits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Set Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch RnD Strategies": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Shadow Performance": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Production Performance": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Risk Limits": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Decision Payload": {
+      "main": [
+        [
+          {
+            "node": "Call Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Slack Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Issues": {
+      "main": [
+        [
+          {
+            "node": "If Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Issues": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Create GitHub Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "version": 2
+}

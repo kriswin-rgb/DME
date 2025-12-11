@@ -1,0 +1,187 @@
+{
+  "name": "WF_SDS_SIGNAL_FANOUT_AND_INGEST_V1",
+  "nodes": [
+    {
+      "id": "Webhook_SignalInput",
+      "name": "Webhook: Signal Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sds/signal",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {
+          "responseContentType": "application/json"
+        }
+      }
+    },
+    {
+      "id": "Set_Normalize",
+      "name": "Set: Normalize Signal",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "asset",
+              "value": "={{ $json[\"asset\"] }}"
+            },
+            {
+              "name": "timeframe",
+              "value": "={{ $json[\"timeframe\"] }}"
+            },
+            {
+              "name": "strategy_id",
+              "value": "={{ $json[\"strategy_id\"] }}"
+            },
+            {
+              "name": "strategy_version",
+              "value": "={{ $json[\"strategy_version\"] || \"1.0\" }}"
+            },
+            {
+              "name": "direction",
+              "value": "={{ $json[\"direction\"] }}"
+            },
+            {
+              "name": "sds_batch_id",
+              "value": "={{ $json[\"sds_batch_id\"] || $execution.id }}"
+            }
+          ],
+          "number": [
+            {
+              "name": "entry",
+              "value": "={{ $json[\"entry\"] }}"
+            },
+            {
+              "name": "stop_loss",
+              "value": "={{ $json[\"stop_loss\"] || null }}"
+            },
+            {
+              "name": "take_profit",
+              "value": "={{ $json[\"take_profit\"] || null }}"
+            }
+          ],
+          "array": [
+            {
+              "name": "channels",
+              "value": "={{ $json[\"channels\"] || [\"telegram\"] }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Telegram_Send",
+      "name": "Telegram: Send Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        860,
+        200
+      ],
+      "parameters": {
+        "chatId": "={{ $json[\"telegram_chat_id\"] || \"<REPLACE_CHAT_ID>\" }}",
+        "text": "={{ `Signal ${$json.asset} ${$json.timeframe} ${$json.direction} @ ${$json.entry}` }}"
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "<REPLACE_TELEGRAM_CREDENTIAL_ID>",
+          "name": "telegram_dme_sds"
+        }
+      }
+    },
+    {
+      "id": "Email_Send",
+      "name": "Email: Send",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        860,
+        400
+      ],
+      "parameters": {
+        "toList": [
+          {
+            "email": "={{ $json[\"email_to\"] || \"signals@example.com\" }}"
+          }
+        ],
+        "subject": "={{ `DME Signal: ${$json.asset} ${$json.timeframe}` }}",
+        "text": "={{ `Strategy ${$json.strategy_id} says ${$json.direction} @ ${$json.entry}` }}"
+      },
+      "credentials": {
+        "smtp": {
+          "id": "<REPLACE_SMTP_CREDENTIAL_ID>",
+          "name": "smtp_dme_main"
+        }
+      }
+    },
+    {
+      "id": "HTTP_Ingest",
+      "name": "HTTP: Log Signal to Core",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/signals/ingest",
+        "sendBody": true,
+        "jsonBody": "={{ {\"asset\": $json.asset, \"timeframe\": $json.timeframe, \"strategy_id\": $json.strategy_id, \"strategy_version\": $json.strategy_version, \"direction\": $json.direction, \"entry\": $json.entry, \"stop_loss\": $json.stop_loss, \"take_profit\": $json.take_profit, \"channels\": $json.channels, \"sds_batch_id\": $json.sds_batch_id} }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Signal Input": {
+      "main": [
+        [
+          {
+            "node": "Set: Normalize Signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Normalize Signal": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Send Message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email: Send",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP: Log Signal to Core",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "id": "WF_SDS_SIGNAL_FANOUT_AND_INGEST_V1",
+  "versionId": "dme-sds-signal-fanout-v1"
+}

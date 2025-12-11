@@ -1,0 +1,424 @@
+{
+  "name": "Content Planning",
+  "nodes": [
+    {
+      "id": "Cron",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": {
+        "x": 250,
+        "y": 300
+      },
+      "parameters": {
+        "triggerTimes": [
+          {
+            "hour": 8,
+            "minute": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "Set Date",
+      "name": "Set Date",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": {
+        "x": 450,
+        "y": 300
+      },
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "date",
+              "value": "={{$now.toISODate()}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch YouTube Metrics",
+      "name": "Fetch YouTube Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 150
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/content/youtube/summary",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "date",
+              "value": "={{$json[\"date\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch Blog Metrics",
+      "name": "Fetch Blog Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 250
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/content/blog/summary",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "date",
+              "value": "={{$json[\"date\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch Email Metrics",
+      "name": "Fetch Email Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 350
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/content/email/summary",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "date",
+              "value": "={{$json[\"date\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Fetch Social Metrics",
+      "name": "Fetch Social Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 650,
+        "y": 450
+      },
+      "parameters": {
+        "url": "https://api.YOUR_DME_DOMAIN/content/social/summary",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "date",
+              "value": "={{$json[\"date\"]}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Gemini Analysis",
+      "name": "Gemini Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 900,
+        "y": 200
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/tools/gemini/youtube-analysis",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{{ \"metrics\": $items(\"Fetch YouTube Metrics\")[0].json, \"instructions\": \"Highlight under/over-performing topics and hooks.\" }}}"
+      }
+    },
+    {
+      "id": "Build Decision Payload",
+      "name": "Build Decision Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": {
+        "x": 1150,
+        "y": 300
+      },
+      "parameters": {
+        "functionCode": "const date = $json.date;\nconst youtube_metrics = $items('Fetch YouTube Metrics')[0].json;\nconst blog_metrics = $items('Fetch Blog Metrics')[0].json;\nconst email_metrics = $items('Fetch Email Metrics')[0].json;\nconst social_metrics = $items('Fetch Social Metrics')[0].json;\nconst gemini_analysis = $items('Gemini Analysis')[0]?.json?.analysis || null;\n\nreturn [\n  {\n    task: {\n      id: `content-plan-${date}`,\n      type: 'content_planning',\n      priority: 'high',\n      mode: 'auto',\n      requested_by: 'system',\n    },\n    inputs: {\n      date,\n      youtube_metrics,\n      blog_metrics,\n      email_metrics,\n      social_metrics,\n      gemini_analysis,\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "Call Orchestrator",
+      "name": "Call Orchestrator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 1400,
+        "y": 300
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/agent/decision",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{$json}}"
+      }
+    },
+    {
+      "id": "Slack Content Summary",
+      "name": "Slack Content Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": {
+        "x": 1650,
+        "y": 250
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "#dme-content",
+        "text": "={{$json[\"outputs\"][\"slack_summary\"] || $json[\"summary\"]}}"
+      },
+      "credentials": {
+        "slackApi": "DME Slack"
+      }
+    },
+    {
+      "id": "Extract Content Issues",
+      "name": "Extract Content Issues",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": {
+        "x": 1650,
+        "y": 350
+      },
+      "parameters": {
+        "functionCode": "const actions = $json.actions || [];\nconst issues = actions\n  .filter(a => a.type === 'open_github_issue')\n  .map(a => ({\n    title: a.title || 'DME Content Task',\n    body: a.body || 'No body provided by DME Brain.',\n    labels: a.labels || ['content', 'marketing', 'bot:copilot'],\n  }));\nreturn [{ issues }];"
+      }
+    },
+    {
+      "id": "If Content Issues",
+      "name": "If Content Issues",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": {
+        "x": 1900,
+        "y": 350
+      },
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"issues\"].length}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "Create Content GitHub Issues",
+      "name": "Create Content GitHub Issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": {
+        "x": 2150,
+        "y": 350
+      },
+      "parameters": {
+        "url": "https://orchestrator.YOUR_DOMAIN/github/issues",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {
+          "bodyContentType": "json"
+        },
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$env[\"ORCH_SHARED_SECRET\"]}`}}"
+            }
+          ]
+        },
+        "bodyParametersJson": "={{$json}}"
+      }
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Set Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Date": {
+      "main": [
+        [
+          {
+            "node": "Fetch YouTube Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Blog Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Email Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Social Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch YouTube Metrics": {
+      "main": [
+        [
+          {
+            "node": "Gemini Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Blog Metrics": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Email Metrics": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Social Metrics": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Analysis": {
+      "main": [
+        [
+          {
+            "node": "Build Decision Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Decision Payload": {
+      "main": [
+        [
+          {
+            "node": "Call Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Slack Content Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Content Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Content Issues": {
+      "main": [
+        [
+          {
+            "node": "If Content Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Content Issues": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Create Content GitHub Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "version": 2
+}

@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DecisionResponseV2",
+  "version": "2.0.0",
+  "type": "object",
+  "required": [
+    "role",
+    "action",
+    "payload",
+    "metadata"
+  ],
+  "properties": {
+    "role": {
+      "type": "string",
+      "description": "Agent role identifier, e.g. Ingestor, ServerModerator"
+    },
+    "action": {
+      "type": "string",
+      "description": "Action type defined by the agent's action enum"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Action-specific data structure"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "timestamp",
+        "correlation_id",
+        "boundaries_violated"
+      ],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlation_id": {
+          "type": "string",
+          "description": "UUID for tracing across agents"
+        },
+        "boundaries_violated": {
+          "type": "boolean",
+          "description": "True if the agent believes it may have crossed its mandate"
+        },
+        "schema_version": {
+          "type": "string",
+          "default": "2.0.0"
+        },
+        "confidence_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "execution_time_ms": {
+          "type": "integer"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "IDs of upstream responses this decision depends on"
+        },
+        "retry_policy": {
+          "type": "object",
+          "properties": {
+            "max_attempts": {
+              "type": "integer",
+              "default": 3
+            },
+            "backoff_strategy": {
+              "type": "string",
+              "enum": [
+                "linear",
+                "exponential",
+                "none"
+              ],
+              "default": "exponential"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "description": "Optional structured error. When present, action SHOULD NOT be executed.",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "recoverable": {
+          "type": "boolean"
+        },
+        "failure_mode": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "permanent"
+          ],
+          "description": "Transient errors can be retried according to retry_policy."
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
