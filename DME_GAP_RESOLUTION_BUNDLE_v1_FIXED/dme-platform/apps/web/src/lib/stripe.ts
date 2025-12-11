@@ -8,10 +8,13 @@ if (!stripeSecretKey) {
 }
 
 export const stripe = stripeSecretKey
-  ? new Stripe(stripeSecretKey, { apiVersion: '2023-10-16' })
+  ? new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' })
   : null;
 
-export function constructStripeEvent(payload: string | Buffer, signature: string | string[] | null | undefined) {
+export function constructStripeEvent(
+  payload: string | Buffer,
+  signature: string | string[] | null | undefined
+) {
   if (!stripe) {
     throw new Error('Stripe client not initialised');
   }
